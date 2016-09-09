@@ -1,39 +1,39 @@
+import com.typesafe.sbt.SbtScalariform._
+
 import scalariform.formatter.preferences._
 
-name := """dwws-test1"""
+name := """sample-ac"""
 
 version := "1.0.0-SNAPSHOT"
 
-scalaVersion := "2.11.6"
+scalaVersion := "2.11.8"
 
-resolvers := ("Atlassian Releases" at "https://maven.atlassian.com/public/") +: resolvers.value
-
-resolvers += "scalaz-bintray" at "https://dl.bintray.com/scalaz/releases"
-
-resolvers += Resolver.sonatypeRepo("snapshots")
-
-licenses += ("Apache-2.0", url("http://www.opensource.org/licenses/apache2.0.php"))
+resolvers += Resolver.jcenterRepo
 
 libraryDependencies ++= Seq(
-  "com.mohiva" %% "play-silhouette" % "3.0.0-RC1",
-  "org.webjars" %% "webjars-play" % "2.4.0",
-  "org.webjars" % "bootstrap" % "3.1.1",
-  "org.webjars" % "jquery" % "1.11.0",
-  "net.codingwell" %% "scala-guice" % "4.0.0",
-  "com.mohiva" %% "play-silhouette-testkit" % "3.0.0-RC1" % "test",
+  "com.mohiva" %% "play-silhouette" % "4.0.0",
+  "com.mohiva" %% "play-silhouette-persistence" % "4.0.0",
+  "com.mohiva" %% "play-silhouette-password-bcrypt" % "4.0.0",
+  "com.mohiva" %% "play-silhouette-crypto-jca" % "4.0.0",
+  "org.webjars" %% "webjars-play" % "2.5.0-2",
+  //"org.webjars" % "bootstrap" % "3.1.1",
+  //"org.webjars" % "jquery" % "1.11.0",
+  "net.codingwell" %% "scala-guice" % "4.0.1",
+  "com.iheart" %% "ficus" % "1.2.6",
+  "com.adrianhurt" %% "play-bootstrap" % "1.0-P25-B3",
+  "com.mohiva" %% "play-silhouette-testkit" % "4.0.0" % "test",
   specs2 % Test,
   cache,
   filters
 )
 
-git.useGitDescribe := true
-
 lazy val root = (project in file(".")).enablePlugins(
-  PlayScala,
-  GitVersioning
-  )
+  PlayScala
+)
 
 routesGenerator := InjectedRoutesGenerator
+
+//routesImport += "utils.route.Binders._"
 
 scalacOptions ++= Seq(
   "-deprecation", // Emit warning and location for usages of deprecated APIs.

@@ -9,9 +9,10 @@ import com.mohiva.play.silhouette.impl.authenticators.SessionAuthenticator
 import com.mohiva.play.silhouette.impl.providers._
 import models.User
 import models.services.UserService
-import play.api.i18n.{ MessagesApi, Messages }
+import play.api.i18n.{ I18nSupport, Messages, MessagesApi }
 import play.api.libs.concurrent.Execution.Implicits._
-import play.api.mvc.Action
+import play.api.mvc.{ Action, Controller }
+import security.DefaultEnv
 
 import scala.concurrent.Future
 
@@ -19,18 +20,19 @@ import scala.concurrent.Future
  * The social auth controller.
  *
  * @param messagesApi The Play messages API.
- * @param env The Silhouette environment.
+ * @param silhouette The Silhouette stack.
  * @param userService The user service implementation.
  * @param authInfoRepository The auth info service implementation.
  * @param socialProviderRegistry The social provider registry.
  */
 class SocialAuthController @Inject() (
   val messagesApi: MessagesApi,
-  val env: Environment[User, SessionAuthenticator],
+  val silhouette: Silhouette[DefaultEnv],
   userService: UserService,
   authInfoRepository: AuthInfoRepository,
-  socialProviderRegistry: SocialProviderRegistry)
-  extends Silhouette[User, SessionAuthenticator] with Logger {
+  socialProviderRegistry: SocialProviderRegistry
+)
+  extends Controller with Logger with I18nSupport {
 
   /**
    * Authenticates a user against a social provider.
@@ -39,19 +41,19 @@ class SocialAuthController @Inject() (
    * @return The result to display.
    */
   def authenticate(provider: String) = Action.async { implicit request =>
-    (socialProviderRegistry.get(provider) match {
+    (socialProviderRegistry.get[SocialProvider](provider) match {
       case Some(p: SocialProvider with CommonSocialProfileBuilder) =>
         p.authenticate().flatMap {
           case Left(result) => Future.successful(result)
-          case Right(authInfo) => for {            
+          case Right(authInfo) => for {
             profile <- p.retrieveProfile(authInfo)
             user <- userService.save(profile, authInfo)
             authInfo <- authInfoRepository.save(profile.loginInfo, authInfo)
-            authenticator <- env.authenticatorService.create(profile.loginInfo)
-            value <- env.authenticatorService.init(authenticator)
-            result <- env.authenticatorService.embed(value, Redirect(routes.ApplicationController.index()))
+            authenticator <- silhouette.env.authenticatorService.create(profile.loginInfo)
+            value <- silhouette.env.authenticatorService.init(authenticator)
+            result <- silhouette.env.authenticatorService.embed(value, Redirect(routes.ApplicationController.index()))
           } yield {
-            env.eventBus.publish(LoginEvent(user, request, request2Messages))
+            silhouette.env.eventBus.publish(LoginEvent(user, request))
             result
           }
         }

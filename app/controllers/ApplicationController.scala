@@ -2,56 +2,61 @@ package controllers
 
 import javax.inject.Inject
 
-import com.mohiva.play.silhouette.api.{Environment, LogoutEvent, Silhouette}
-import com.mohiva.play.silhouette.impl.authenticators.SessionAuthenticator
+import com.mohiva.play.silhouette.api.{ LogoutEvent, Silhouette }
 import com.mohiva.play.silhouette.impl.providers.SocialProviderRegistry
-import forms._
-import models.User
-import play.api.i18n.MessagesApi
-import play.api.libs.json.Json
+import forms.{ SignInForm, SignUpForm }
+import org.talend.play.silhouette.impl.providers.oidc.OidcProvider
+import play.api.i18n.{ I18nSupport, MessagesApi }
 import play.api.mvc.Action
-import security.{AdminRights, WithProvider}
+import play.api.libs.json.Json
+import play.api.mvc.Controller
+import security.{ AdminRights, DefaultEnv, WithProvider }
 
 import scala.concurrent.Future
 
 /**
  * The basic application controller.
  *
- * @param messagesApi The Play messages API.
- * @param env The Silhouette environment.
+ * @param messagesApi            The Play messages API.
+ * @param silhouette             The Silhouette stack.
  * @param socialProviderRegistry The social provider registry.
  */
 class ApplicationController @Inject() (
   val messagesApi: MessagesApi,
-  val env: Environment[User, SessionAuthenticator],
-  socialProviderRegistry: SocialProviderRegistry)
-  extends Silhouette[User, SessionAuthenticator] {
+  val silhouette: Silhouette[DefaultEnv],
+  socialProviderRegistry: SocialProviderRegistry,
+  implicit val webJarAssets: WebJarAssets
+)
+  extends Controller with I18nSupport {
 
   /**
    * Handles the index action.
    *
    * @return The result to display.
    */
-  def index = SecuredAction.async { implicit request =>
+  def index = silhouette.SecuredAction.async { implicit request =>
     Future.successful(Ok(views.html.home(request.identity)))
   }
+  //  def index = silhouette.SecuredAction.async { implicit request =>
+  //    Future.successful(Ok(views.html.home(request.identity)))
+  //  }
 
-  def hello = Action {
+  def hello = Action { request =>
     Ok("coucou you")
   }
 
-//  def secured = SecuredAction.async {
-//    Future.successful(Ok("coucou you"))
-//  }
-  def secured = SecuredAction(WithProvider("oidc")) {implicit request =>
+  //  def secured = SecuredAction.async {
+  //    Future.successful(Ok("coucou you"))
+  //  }
+  def secured = silhouette.SecuredAction(WithProvider[DefaultEnv#A](OidcProvider.ID)) {
     Ok("coucou you")
   }
 
-  def admin = SecuredAction(AdminRights) {implicit request =>
+  def admin = silhouette.SecuredAction(AdminRights()) {
     Ok("admin action called")
   }
 
-  def profile = SecuredAction { implicit request =>
+  def profile = silhouette.SecuredAction { implicit request =>
     Ok(Json.toJson(request.identity.loginInfo))
   }
 
@@ -60,7 +65,7 @@ class ApplicationController @Inject() (
    *
    * @return The result to display.
    */
-  def signIn = UserAwareAction.async { implicit request =>
+  def signIn = silhouette.UserAwareAction.async { implicit request =>
     request.identity match {
       case Some(user) => Future.successful(Redirect(routes.ApplicationController.index()))
       case None => Future.successful(Ok(views.html.signIn(SignInForm.form, socialProviderRegistry)))
@@ -72,7 +77,7 @@ class ApplicationController @Inject() (
    *
    * @return The result to display.
    */
-  def signUp = UserAwareAction.async { implicit request =>
+  def signUp = silhouette.UserAwareAction.async { implicit request =>
     request.identity match {
       case Some(user) => Future.successful(Redirect(routes.ApplicationController.index()))
       case None => Future.successful(Ok(views.html.signUp(SignUpForm.form)))
@@ -84,10 +89,9 @@ class ApplicationController @Inject() (
    *
    * @return The result to display.
    */
-  def signOut = SecuredAction.async { implicit request =>
+  def signOut = silhouette.SecuredAction.async { implicit request =>
     val result = Redirect(routes.ApplicationController.index())
-    env.eventBus.publish(LogoutEvent(request.identity, request, request2Messages))
-
-    env.authenticatorService.discard(request.authenticator, result)
+    silhouette.env.eventBus.publish(LogoutEvent(request.identity, request))
+    silhouette.env.authenticatorService.discard(request.authenticator, result)
   }
 }

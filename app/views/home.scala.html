@@ -1,4 +1,4 @@
-@(user: models.User)
+@(user: models.User)(implicit request: RequestHeader, messages: Messages, webJarAssets: WebJarAssets)
 
 @main("DWWS - Teste - Home", Some(user)) {
     <div class="user col-md-6 col-md-offset-3">

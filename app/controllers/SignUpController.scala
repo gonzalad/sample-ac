@@ -7,35 +7,36 @@ import com.mohiva.play.silhouette.api._
 import com.mohiva.play.silhouette.api.repositories.AuthInfoRepository
 import com.mohiva.play.silhouette.api.services.AvatarService
 import com.mohiva.play.silhouette.api.util.PasswordHasher
-import com.mohiva.play.silhouette.impl.authenticators.SessionAuthenticator
 import com.mohiva.play.silhouette.impl.providers._
 import forms.SignUpForm
 import models.User
 import models.services.UserService
-import play.api.i18n.{ MessagesApi, Messages }
+import play.api.i18n.{ I18nSupport, Messages, MessagesApi }
 import play.api.libs.concurrent.Execution.Implicits._
-import play.api.mvc.Action
+import play.api.mvc.{ Action, Controller }
+import security.DefaultEnv
 
 import scala.concurrent.Future
 
 /**
  * The sign up controller.
  *
- * @param messagesApi The Play messages API.
- * @param env The Silhouette environment.
- * @param userService The user service implementation.
+ * @param silhouette         The Silhouette stack.
+ * @param userService        The user service implementation.
  * @param authInfoRepository The auth info repository implementation.
- * @param avatarService The avatar service implementation.
- * @param passwordHasher The password hasher implementation.
+ * @param avatarService      The avatar service implementation.
+ * @param passwordHasher     The password hasher implementation.
  */
 class SignUpController @Inject() (
   val messagesApi: MessagesApi,
-  val env: Environment[User, SessionAuthenticator],
+  val silhouette: Silhouette[DefaultEnv],
   userService: UserService,
   authInfoRepository: AuthInfoRepository,
   avatarService: AvatarService,
-  passwordHasher: PasswordHasher)
-  extends Silhouette[User, SessionAuthenticator] {
+  passwordHasher: PasswordHasher,
+  implicit val webJarAssets: WebJarAssets
+)
+  extends Controller with I18nSupport {
 
   /**
    * Registers a new user.
@@ -66,12 +67,12 @@ class SignUpController @Inject() (
               avatar <- avatarService.retrieveURL(data.email)
               user <- userService.save(user.copy(avatarURL = avatar))
               authInfo <- authInfoRepository.add(loginInfo, authInfo)
-              authenticator <- env.authenticatorService.create(loginInfo)
-              value <- env.authenticatorService.init(authenticator)
-              result <- env.authenticatorService.embed(value, Redirect(routes.ApplicationController.index()))
+              authenticator <- silhouette.env.authenticatorService.create(loginInfo)
+              value <- silhouette.env.authenticatorService.init(authenticator)
+              result <- silhouette.env.authenticatorService.embed(value, Redirect(routes.ApplicationController.index()))
             } yield {
-              env.eventBus.publish(SignUpEvent(user, request, request2Messages))
-              env.eventBus.publish(LoginEvent(user, request, request2Messages))
+              silhouette.env.eventBus.publish(SignUpEvent(user, request))
+              silhouette.env.eventBus.publish(LoginEvent(user, request))
               result
             }
         }

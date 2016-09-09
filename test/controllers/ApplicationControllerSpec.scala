@@ -3,7 +3,7 @@ package controllers
 import java.util.UUID
 
 import com.google.inject.AbstractModule
-import com.mohiva.play.silhouette.api.{ Environment, LoginInfo }
+import com.mohiva.play.silhouette.api.{Environment, LoginInfo}
 import com.mohiva.play.silhouette.impl.authenticators.SessionAuthenticator
 import com.mohiva.play.silhouette.test._
 import models.User
@@ -12,19 +12,20 @@ import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.concurrent.Execution.Implicits._
-import play.api.test.{ FakeRequest, PlaySpecification, WithApplication }
+import play.api.test.{FakeRequest, PlaySpecification, WithApplication}
+import security.DefaultEnv
 
 /**
- * Test case for the [[controllers.ApplicationController]] class.
- */
+  * Test case for the [[controllers.ApplicationController]] class.
+  */
 class ApplicationControllerSpec extends PlaySpecification with Mockito {
   sequential
 
   "The `index` action" should {
     "redirect to login page if user is unauthorized" in new Context {
       new WithApplication(application) {
-        val Some(redirectResult) = route(FakeRequest(routes.ApplicationController.index())
-          .withAuthenticator[SessionAuthenticator](LoginInfo("invalid", "invalid"))
+        val Some(redirectResult) = route(app, FakeRequest(routes.ApplicationController.index())
+          .withAuthenticator[DefaultEnv](LoginInfo("invalid", "invalid"))
         )
 
         status(redirectResult) must be equalTo SEE_OTHER
@@ -32,7 +33,7 @@ class ApplicationControllerSpec extends PlaySpecification with Mockito {
         val redirectURL = redirectLocation(redirectResult).getOrElse("")
         redirectURL must contain(routes.ApplicationController.signIn().toString())
 
-        val Some(unauthorizedResult) = route(FakeRequest(GET, redirectURL))
+        val Some(unauthorizedResult) = route(app, FakeRequest(GET, redirectURL))
 
         status(unauthorizedResult) must be equalTo OK
         contentType(unauthorizedResult) must beSome("text/html")
@@ -42,8 +43,8 @@ class ApplicationControllerSpec extends PlaySpecification with Mockito {
 
     "return 200 if user is authorized" in new Context {
       new WithApplication(application) {
-        val Some(result) = route(FakeRequest(routes.ApplicationController.index())
-          .withAuthenticator[SessionAuthenticator](identity.loginInfo)
+        val Some(result) = route(app, FakeRequest(routes.ApplicationController.index())
+          .withAuthenticator[DefaultEnv](identity.loginInfo)
         )
 
         status(result) must beEqualTo(OK)
@@ -52,25 +53,26 @@ class ApplicationControllerSpec extends PlaySpecification with Mockito {
   }
 
   /**
-   * The context.
-   */
+    * The context.
+    */
   trait Context extends Scope {
 
     /**
-     * A fake Guice module.
-     */
+      * A fake Guice module.
+      */
     class FakeModule extends AbstractModule with ScalaModule {
       def configure() = {
-        bind[Environment[User, SessionAuthenticator]].toInstance(env)
+        bind[Environment[DefaultEnv]].toInstance(env)
       }
     }
 
     /**
-     * An identity.
-     */
+      * An identity.
+      */
     val identity = User(
       userID = UUID.randomUUID(),
       loginInfo = LoginInfo("facebook", "user@facebook.com"),
+      List(),
       firstName = None,
       lastName = None,
       fullName = None,
@@ -79,15 +81,16 @@ class ApplicationControllerSpec extends PlaySpecification with Mockito {
     )
 
     /**
-     * A Silhouette fake environment.
-     */
-    implicit val env: Environment[User, SessionAuthenticator] = new FakeEnvironment[User, SessionAuthenticator](Seq(identity.loginInfo -> identity))
+      * A Silhouette fake environment.
+      */
+    implicit val env: Environment[DefaultEnv] = new FakeEnvironment[DefaultEnv](Seq(identity.loginInfo -> identity))
 
     /**
-     * The application.
-     */
+      * The application.
+      */
     lazy val application = new GuiceApplicationBuilder()
       .overrides(new FakeModule)
       .build()
   }
+
 }
