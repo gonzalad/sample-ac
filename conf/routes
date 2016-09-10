@@ -17,4 +17,5 @@ GET         /webjars/*file                   controllers.WebJarAssets.at(file)
 
 # Test Url
 GET         /hello                           @controllers.ApplicationController.hello
+GET         /call                            @controllers.ApplicationController.call
 GET         /admin                           @controllers.ApplicationController.admin

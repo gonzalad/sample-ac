@@ -1,15 +1,17 @@
 package modules
 
+import java.util.UUID
+
 import com.google.inject.{ AbstractModule, Provides }
 import com.mohiva.play.silhouette.api.actions.{ SecuredErrorHandler, UnsecuredErrorHandler }
 import com.mohiva.play.silhouette.api.crypto.{ Base64AuthenticatorEncoder, CookieSigner, Crypter }
 import com.mohiva.play.silhouette.api.repositories.AuthInfoRepository
 import com.mohiva.play.silhouette.api.services._
-import com.mohiva.play.silhouette.api.util._
-import com.mohiva.play.silhouette.api.{ Environment, EventBus, Silhouette, SilhouetteProvider }
+import com.mohiva.play.silhouette.api.util.{ PasswordHasherRegistry, PasswordInfo, _ }
+import com.mohiva.play.silhouette.api._
 import com.mohiva.play.silhouette.crypto.{ JcaCookieSigner, JcaCookieSignerSettings, JcaCrypter, JcaCrypterSettings }
 import com.mohiva.play.silhouette.impl.authenticators._
-import com.mohiva.play.silhouette.impl.providers._
+import com.mohiva.play.silhouette.impl.providers.{ BasicAuthProvider, _ }
 import com.mohiva.play.silhouette.impl.providers.oauth1._
 import com.mohiva.play.silhouette.impl.providers.oauth1.secrets.{ CookieSecretProvider, CookieSecretSettings }
 import com.mohiva.play.silhouette.impl.providers.oauth1.services.PlayOAuth1Service
@@ -18,8 +20,9 @@ import com.mohiva.play.silhouette.impl.providers.oauth2.state.{ CookieStateProvi
 import com.mohiva.play.silhouette.impl.services._
 import com.mohiva.play.silhouette.impl.util._
 import com.mohiva.play.silhouette.password.BCryptPasswordHasher
-import com.mohiva.play.silhouette.persistence.daos.{ DelegableAuthInfoDAO, InMemoryAuthInfoDAO }
+import com.mohiva.play.silhouette.persistence.daos.{ AuthInfoDAO, DelegableAuthInfoDAO, InMemoryAuthInfoDAO }
 import com.mohiva.play.silhouette.persistence.repositories.DelegableAuthInfoRepository
+import models.User
 import models.daos._
 import models.services.{ UserService, UserServiceImpl }
 import net.codingwell.scalaguice.ScalaModule
@@ -31,7 +34,8 @@ import play.api.{ Configuration, Play }
 import security.DefaultEnv
 import utils.{ CustomSecuredErrorHandler, CustomUnsecuredErrorHandler }
 
-import scala.concurrent.duration.DurationLong
+import scala.concurrent.Await
+import scala.concurrent.duration.{ Duration, DurationLong }
 
 /**
  * The Guice module which wires all Silhouette dependencies.
@@ -42,6 +46,7 @@ class SilhouetteModule extends AbstractModule with ScalaModule {
    * Configures the module.
    */
   def configure() {
+    def passwordHasher = new BCryptPasswordHasher
     bind[Silhouette[DefaultEnv]].to[SilhouetteProvider[DefaultEnv]]
     bind[UnsecuredErrorHandler].to[CustomUnsecuredErrorHandler]
     bind[SecuredErrorHandler].to[CustomSecuredErrorHandler]
@@ -49,16 +54,34 @@ class SilhouetteModule extends AbstractModule with ScalaModule {
     bind[UserDAO].to[UserDAOImpl]
     bind[CacheLayer].to[PlayCacheLayer]
     bind[IDGenerator].toInstance(new SecureRandomIDGenerator())
-    bind[PasswordHasher].toInstance(new BCryptPasswordHasher)
+    bind[PasswordHasher].toInstance(passwordHasher)
     bind[FingerprintGenerator].toInstance(new DefaultFingerprintGenerator(false))
     bind[EventBus].toInstance(EventBus())
     bind[Clock].toInstance(Clock())
 
     // Replace this with the bindings to your concrete DAOs
-    bind[DelegableAuthInfoDAO[PasswordInfo]].toInstance(new InMemoryAuthInfoDAO[PasswordInfo])
+    //bind[DelegableAuthInfoDAO[PasswordInfo]].toInstance(providesPasswordInfoDao(passwordHasher))
     bind[DelegableAuthInfoDAO[OAuth1Info]].toInstance(new InMemoryAuthInfoDAO[OAuth1Info])
     bind[DelegableAuthInfoDAO[OAuth2Info]].toInstance(new InMemoryAuthInfoDAO[OAuth2Info])
     bind[DelegableAuthInfoDAO[OpenIDInfo]].toInstance(new InMemoryAuthInfoDAO[OpenIDInfo])
+  }
+
+  @Provides
+  def providesPasswordInfoDao(passwordHasher: PasswordHasher): DelegableAuthInfoDAO[PasswordInfo] = {
+    def passwordInfoDao: DelegableAuthInfoDAO[PasswordInfo] = new InMemoryAuthInfoDAO[PasswordInfo]
+    def loginInfo = LoginInfo(BasicAuthProvider.ID, "alice")
+    Await.result(passwordInfoDao.add(loginInfo, PasswordInfo(passwordHasher.id, "alice")), Duration.Inf)
+    passwordInfoDao
+  }
+
+  @Provides
+  def providesBasicAuthProvider(authInfoRepository: AuthInfoRepository, passwordHasherRegistry: PasswordHasherRegistry): BasicAuthProvider = {
+    new BasicAuthProvider(authInfoRepository, passwordHasherRegistry)
+  }
+
+  @Provides
+  def providesRequestHandlers(basicAuthProvider: BasicAuthProvider): Seq[RequestProvider] = {
+    Seq(basicAuthProvider)
   }
 
   /**
@@ -143,13 +166,14 @@ class SilhouetteModule extends AbstractModule with ScalaModule {
   def provideEnvironment(
     userService: UserService,
     authenticatorService: AuthenticatorService[SessionAuthenticator],
+    requestProviders: Seq[RequestProvider],
     eventBus: EventBus
   ): Environment[DefaultEnv] = {
 
     Environment[DefaultEnv](
       userService,
       authenticatorService,
-      Seq(),
+      requestProviders,
       eventBus
     )
   }
@@ -187,12 +211,16 @@ class SilhouetteModule extends AbstractModule with ScalaModule {
    */
   @Provides
   def provideAuthInfoRepository(
+    passwordHasher: PasswordHasher,
     passwordInfoDAO: DelegableAuthInfoDAO[PasswordInfo],
     oauth1InfoDAO: DelegableAuthInfoDAO[OAuth1Info],
     oauth2InfoDAO: DelegableAuthInfoDAO[OAuth2Info],
     openIDInfoDAO: DelegableAuthInfoDAO[OpenIDInfo]
   ): AuthInfoRepository = {
 
+    //new DelegableAuthInfoRepository(providesPasswordInfoDao(passwordHasher), oauth1InfoDAO, oauth2InfoDAO, openIDInfoDAO)
+
+    passwordInfoDAO.add(LoginInfo(BasicAuthProvider.ID, "alice"), passwordHasher.hash("alice"))
     new DelegableAuthInfoRepository(passwordInfoDAO, oauth1InfoDAO, oauth2InfoDAO, openIDInfoDAO)
   }
 

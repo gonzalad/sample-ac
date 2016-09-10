@@ -66,3 +66,9 @@ Oidc Application Client Demo
      
      Quite useless for now (I must merge a PR in IAM whichs maps syncope groups to OAuth
      scopes, and then it will be a bit more usefull).
+     
+   * http://localhost:9000/call
+   
+     Will call RS applicat-ion (you need to start sample-rs on port 9001).
+     This sample propagates AT in HTTP header.
+     
